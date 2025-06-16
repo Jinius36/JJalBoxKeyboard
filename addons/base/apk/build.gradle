@@ -18,4 +18,9 @@ android {
     dataBinding {
         enabled = true
     }
+
+    // Kotlin JVM target 설정 추가
+    kotlinOptions {
+        jvmTarget = "17"
+    }
 }

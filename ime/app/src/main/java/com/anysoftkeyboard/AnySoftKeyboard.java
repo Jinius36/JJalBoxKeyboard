@@ -25,6 +25,7 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.ExtractedText;
@@ -55,6 +56,7 @@ import com.anysoftkeyboard.keyboards.views.AnyKeyboardView;
 import com.anysoftkeyboard.prefs.AnimationsLevel;
 import com.anysoftkeyboard.receivers.PackagesChangedReceiver;
 import com.anysoftkeyboard.rx.GenericOnError;
+import com.anysoftkeyboard.ui.DummyImageAdapter;
 import com.anysoftkeyboard.ui.VoiceInputNotInstalledActivity;
 import com.anysoftkeyboard.ui.dev.DevStripActionProvider;
 import com.anysoftkeyboard.ui.dev.DeveloperUtils;
@@ -69,6 +71,18 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import net.evendanan.pixel.GeneralDialogController;
+import android.view.LayoutInflater;
+import android.widget.LinearLayout;
+import androidx.recyclerview.widget.RecyclerView;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.content.ClipboardManager;
+import android.content.ClipData;
+import android.widget.Toast;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+import com.bumptech.glide.Glide;
+
 
 /** Input method implementation for QWERTY-ish keyboard. */
 public abstract class AnySoftKeyboard extends AnySoftKeyboardColorizeNavBar {
@@ -89,6 +103,10 @@ public abstract class AnySoftKeyboard extends AnySoftKeyboardColorizeNavBar {
   private VoiceRecognitionTrigger mVoiceRecognitionTrigger;
   private View mFullScreenExtractView;
   private EditText mFullScreenExtractTextView;
+
+  private View mFloatingSearchBar;
+  private EditText mSearchInput;
+  private RecyclerView mImageList;
 
   private boolean mAutoCap;
   private boolean mKeyboardAutoCap;
@@ -264,28 +282,53 @@ public abstract class AnySoftKeyboard extends AnySoftKeyboardColorizeNavBar {
 
   @Override
   public void onStartInputView(final EditorInfo attribute, final boolean restarting) {
-    Logger.v(
-        TAG,
-        "onStartInputView(EditorInfo{imeOptions %d, inputType %d}, restarting %s",
-        attribute.imeOptions,
-        attribute.inputType,
-        restarting);
-
     super.onStartInputView(attribute, restarting);
-
-    if (mVoiceRecognitionTrigger != null) {
-      mVoiceRecognitionTrigger.onStartInputView();
-    }
 
     InputViewBinder inputView = getInputView();
     inputView.resetInputView();
     inputView.setKeyboardActionType(attribute.imeOptions);
-
     updateShiftStateNow();
 
-    if (BuildConfig.DEBUG) {
-      getInputViewContainer().addStripAction(mDevToolsAction, false);
+    // 🌟 플로팅 바 UI 삽입 시작
+    if (mFloatingSearchBar == null) {
+      LayoutInflater inflater = LayoutInflater.from(this);
+      mFloatingSearchBar = inflater.inflate(R.layout.floating_search_bar, null);
+
+      mSearchInput = mFloatingSearchBar.findViewById(R.id.search_input);
+      mImageList = mFloatingSearchBar.findViewById(R.id.image_list);
+
+      mSearchInput.addTextChangedListener(new TextWatcher() {
+        @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+        @Override public void afterTextChanged(Editable s) {}
+        @Override
+        public void onTextChanged(CharSequence s, int start, int before, int count) {
+          if ("upset".equalsIgnoreCase(s.toString())) {
+            showDummyImages(); // 임시 이미지 로딩 함수
+          }
+        }
+      });
     }
+    View inputViewRoot = (View) getInputView(); // 또는 AnyKeyboardView로 캐스팅해도 OK
+    if (inputViewRoot instanceof ViewGroup && mFloatingSearchBar.getParent() == null) {
+      ((ViewGroup) inputViewRoot).addView(mFloatingSearchBar, 0);
+    }
+  }
+
+  private void showDummyImages() {
+    List<String> imageUrls = new ArrayList<>();
+    for (int i = 0; i < 10; i++) {
+      imageUrls.add("https://picsum.photos/200/200?random=" + i);
+    }
+
+    RecyclerView.Adapter adapter = new DummyImageAdapter(this, imageUrls, url -> {
+      ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+      ClipData clip = ClipData.newPlainText("Image URL", url);
+      clipboard.setPrimaryClip(clip);
+      Toast.makeText(this, "이미지 URL 복사됨!", Toast.LENGTH_SHORT).show();
+    });
+
+    mImageList.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
+    mImageList.setAdapter(adapter);
   }
 
   @Override
